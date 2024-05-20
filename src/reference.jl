@@ -5,11 +5,13 @@ const KWARGS = ["numgsrefs", "sensitivity", "to_gff3", "nofilter"]
 struct ChloeConfig
     numgsrefs::Int
     sensitivity::Real
+    short_gene_warning_threshold::Real
     to_gff3::Bool
     nofilter::Bool
-    function ChloeConfig(; numgsrefs=DEFAULT_NUMGSREFS, sensitivity=DEFAULT_SENSITIVITY,
+
+    function ChloeConfig(; numgsrefs=DEFAULT_NUMGSREFS, sensitivity=DEFAULT_SENSITIVITY, short_gene_warning_threshold=DEFAULT_SHORT_THRESHOLD,
         to_gff3::Bool=false, nofilter::Bool=false)
-        return new(numgsrefs, sensitivity, to_gff3, nofilter)
+        return new(numgsrefs, sensitivity, short_gene_warning_threshold, to_gff3, nofilter)
     end
 
     # needs to be V <: Any since this is coming from a JSON blob

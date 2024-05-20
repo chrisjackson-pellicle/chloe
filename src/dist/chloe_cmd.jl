@@ -17,14 +17,15 @@ function quiet_metafmt(level, _module, group, id, file, line)
 end
 
 function chloe(; gsrefsdir="default", numgsrefs=DEFAULT_NUMGSREFS, fasta_files=String[],
-    template="default", sensitivity=DEFAULT_SENSITIVITY,
+    template="default", sensitivity=DEFAULT_SENSITIVITY, short_gene_warning_threshold=DEFAULT_SHORT_THRESHOLD,
     output::Union{Nothing,String}=nothing, gff::Bool=false, nofilter::Bool=false, reference_dir::Union{Nothing,String}=nothing)
+
     db = if isnothing(reference_dir)
             Annotator.ReferenceDb(; gsrefsdir=gsrefsdir, template=template)
     else
         Annotator.ReferenceDbFromDir(reference_dir)
     end
-    config = Annotator.ChloeConfig(; numgsrefs=numgsrefs, sensitivity=sensitivity, to_gff3=gff, nofilter=nofilter)
+    config = Annotator.ChloeConfig(; numgsrefs=numgsrefs, sensitivity=sensitivity, to_gff3=gff, nofilter=nofilter, short_gene_warning_threshold=short_gene_warning_threshold)
     Annotator.annotate_batch(db, fasta_files, config, output)
 end
 
@@ -113,12 +114,16 @@ function getargs(args::Vector{String}=ARGS)
         arg_type = Float64
         default = DEFAULT_SENSITIVITY
         help = "probability threshold for reporting features [default: $(DEFAULT_SENSITIVITY)]"
+        "--short_gene_warning_threshold"
+        arg_type = Float64
+        default = DEFAULT_SHORT_THRESHOLD
+        help = "Percentage of median expected gene length; genes beneath this threshold will trigger a warning [default: $(DEFAULT_SHORT_THRESHOLD)]"
         "--nofilter"
         action = :store_true
         help = "don't filter output"
         "--gff"
         action = :store_true
-        help = "save output in gff3 format instead of sff"
+        help = "save output in gff3 format instead of sff"  
     end
 
     @add_arg_table! cmd_args["rotate"] begin

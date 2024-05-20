@@ -35,6 +35,7 @@ const LOW_ANNOTATION_DEPTH = "has low annotation depth, probably spurious"
 const INFERIOR_COPY = "probable pseudogene as better copy exists in the genome"
 const PARTIAL_IR = "probable pseudogene as overlaps end of inverted repeat"
 const OVERLAPPING_FEATURE = "better-scoring feature overlaps with this one"
+const LESS_THAN_EXPECTED_MEDIAN_LENGTH = "The gene CDS sequence is less than the expected median length"
 
 struct SingleReference
     ref_id::String
@@ -325,11 +326,39 @@ struct ChloeAnnotation
     coverages::Dict{String,Float32}
     annotation::FwdRev{Vector{SFF_Model}}
 end
+
+
+function get_mean_lengths_dict(feature_templates::Dict)
+
+    template_lengths_dict = Dict{String,UInt16}()
+
+    for (key, value) in feature_templates
+        # println("Key: $key, Value: $value")
+        feature_type = split(key, '/')[2]
+        if feature_type == "intron"
+            continue
+        end
+
+        gene_name = split(key, '/')[1]
+        median_length = value.median_length
+        median_length = floor(UInt16,median_length)
+
+        if !haskey(template_lengths_dict, gene_name)
+            template_lengths_dict[gene_name] = median_length
+        else
+            template_lengths_dict[gene_name] = template_lengths_dict[gene_name] += median_length
+        end
+    end
+
+    return template_lengths_dict
+end
+
+
 function annotate_one_worker(db::AbstractReferenceDb,
     target_id::String,
     target::FwdRev{CircularSequence},
     config::ChloeConfig,
-)::ChloeAnnotation
+    )::ChloeAnnotation
 
     t1 = time_ns()
     target_length = Int32(length(target.forward))
@@ -362,7 +391,7 @@ function annotate_one_worker(db::AbstractReferenceDb,
     refs = [get_single_reference!(db, r[1], reference_feature_counts) for r in refpicks]
 
     Threads.@threads for i in eachindex(refs)
-        a = align_to_reference(refs[i], target_id, target)
+        a = align_to_reference(refs[i], target_id, target)  
         blocks_aligned_to_targetf[i] = a[1].forward
         blocks_aligned_to_targetr[i] = a[1].reverse
         lock(REENTRANT_LOCK) do
@@ -372,6 +401,10 @@ function annotate_one_worker(db::AbstractReferenceDb,
 
     feature_templates = get_templates(db)
 
+    ########################################################################################################################
+    spliced_feature_median_lengths_dict = get_mean_lengths_dict(feature_templates)
+    ########################################################################################################################
+
     t3 = time_ns()
     @info "[$target_id] aligned: ($(numrefs)) $(human(datasize(blocks_aligned_to_targetf) + datasize(blocks_aligned_to_targetr))) mean coverage: $(geomean(values(coverages))) $(ns(t3 - t2))"
 
@@ -380,7 +413,7 @@ function annotate_one_worker(db::AbstractReferenceDb,
             '+', blocks_aligned_to_targetf, feature_templates)
         final_models = SFF_Model[]
         for model in filter(m -> !isempty(m), models)
-            sff = toSFFModel(feature_templates, model, '+', target.forward, config.sensitivity)
+            sff = toSFFModel(feature_templates, model, '+', target.forward, config.sensitivity, config.short_gene_warning_threshold, spliced_feature_median_lengths_dict)
             !isnothing(sff) && push!(final_models, sff)
         end
         final_models
@@ -391,7 +424,7 @@ function annotate_one_worker(db::AbstractReferenceDb,
             '-', blocks_aligned_to_targetr, feature_templates)
         final_models = SFF_Model[]
         for model in filter(m -> !isempty(m), models)
-            sff = toSFFModel(feature_templates, model, '-', target.reverse, config.sensitivity)
+            sff = toSFFModel(feature_templates, model, '-', target.reverse, config.sensitivity, config.short_gene_warning_threshold, spliced_feature_median_lengths_dict)
             !isnothing(sff) && push!(final_models, sff)
         end
         final_models
@@ -495,8 +528,8 @@ function annotate(db::AbstractReferenceDb,
     target_id::String,
     target::FwdRev{CircularSequence},
     config::Union{ChloeConfig,Nothing}=nothing,
-    output::MayBeIO=nothing
-)::Tuple{Union{String,IO},String}
+    output::MayBeIO=nothing)::Tuple{Union{String,IO},String}
+
     config = isnothing(config) ? ChloeConfig() : config
 
     result = annotate_one_worker(db, target_id, target, config)
@@ -919,8 +952,17 @@ function mean_stackdepth(model::SFF_Model)::Float64
     return sum / length(model.features)
 end
 
-function toSFFModel(feature_templates::Dict{String,FeatureTemplate}, model::Vector{SFF_Feature}, strand::Char, target_seq::CircularSequence, sensitivity::Real)::Union{Nothing,SFF_Model}
+function toSFFModel(feature_templates::Dict{String,FeatureTemplate}, 
+    model::Vector{SFF_Feature}, 
+    strand::Char, 
+    target_seq::CircularSequence, 
+    sensitivity::Real,
+    short_gene_warning_threshold::Real,
+    spliced_feature_median_lengths_dict::Dict)::Union{Nothing,SFF_Model}
+
     gene = first(model).feature.gene
+    gene_median_length = spliced_feature_median_lengths_dict[gene]
+
     type = featuretype(model)
     type == "" && return nothing
     warnings = String[]
@@ -955,6 +997,13 @@ function toSFFModel(feature_templates::Dict{String,FeatureTemplate}, model::Vect
 
     if exceeds_sensitivity && (type == "CDS")
         cds = splice_model(target_seq, model)
+
+        if (length(cds) / gene_median_length) < short_gene_warning_threshold
+            println("WARNING: $(gene) CDS is $(length(cds)) bp, whereas median expected length is $(gene_median_length)")
+            push!(warnings, LESS_THAN_EXPECTED_MEDIAN_LENGTH)
+        end
+
+
         if gene ≠ "rps12B" && !isstartcodon(getcodon(cds, Int32(1)), true, true)
             push!(warnings, LACKS_START_CODON)
         end
