@@ -413,7 +413,7 @@ function annotate_one_worker(db::AbstractReferenceDb,
             '+', blocks_aligned_to_targetf, feature_templates)
         final_models = SFF_Model[]
         for model in filter(m -> !isempty(m), models)
-            sff = toSFFModel(feature_templates, model, '+', target.forward, config.sensitivity, config.short_gene_warning_threshold, spliced_feature_median_lengths_dict)
+            sff = toSFFModel(feature_templates, model, '+', target.forward, config.sensitivity, config.short_gene_warning_threshold, spliced_feature_median_lengths_dict, target_id)
             !isnothing(sff) && push!(final_models, sff)
         end
         final_models
@@ -424,7 +424,7 @@ function annotate_one_worker(db::AbstractReferenceDb,
             '-', blocks_aligned_to_targetr, feature_templates)
         final_models = SFF_Model[]
         for model in filter(m -> !isempty(m), models)
-            sff = toSFFModel(feature_templates, model, '-', target.reverse, config.sensitivity, config.short_gene_warning_threshold, spliced_feature_median_lengths_dict)
+            sff = toSFFModel(feature_templates, model, '-', target.reverse, config.sensitivity, config.short_gene_warning_threshold, spliced_feature_median_lengths_dict, target_id)
             !isnothing(sff) && push!(final_models, sff)
         end
         final_models
@@ -958,7 +958,8 @@ function toSFFModel(feature_templates::Dict{String,FeatureTemplate},
     target_seq::CircularSequence, 
     sensitivity::Real,
     short_gene_warning_threshold::Real,
-    spliced_feature_median_lengths_dict::Dict)::Union{Nothing,SFF_Model}
+    spliced_feature_median_lengths_dict::Dict,
+    target_id::String)::Union{Nothing,SFF_Model}
 
     gene = first(model).feature.gene
     gene_median_length = spliced_feature_median_lengths_dict[gene]
@@ -999,7 +1000,7 @@ function toSFFModel(feature_templates::Dict{String,FeatureTemplate},
         cds = splice_model(target_seq, model)
 
         if (length(cds) / gene_median_length) < short_gene_warning_threshold
-            @warn("$(gene) CDS is $(length(cds)) bp, whereas median expected length is $(gene_median_length)")
+            @warn("[$(target_id)] $(gene) CDS is $(length(cds)) bp, whereas median expected length is $(gene_median_length)")
             push!(warnings, LESS_THAN_EXPECTED_MEDIAN_LENGTH)
         end
 
