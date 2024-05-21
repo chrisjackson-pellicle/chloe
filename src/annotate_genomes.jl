@@ -996,6 +996,15 @@ function toSFFModel(feature_templates::Dict{String,FeatureTemplate},
         exceeds_sensitivity = true
     end
 
+    if exceeds_sensitivity && (type == "tRNA" || type == "rRNA")
+        gene_seq = splice_model(target_seq, model)
+        
+        if (length(gene_seq) / gene_median_length) < short_gene_warning_threshold
+            @warn("[$(target_id)] $(gene) is $(length(gene_seq)) bp, whereas median expected length is $(gene_median_length)")
+            push!(warnings, LESS_THAN_EXPECTED_MEDIAN_LENGTH)
+        end
+    end
+
     if exceeds_sensitivity && (type == "CDS")
         cds = splice_model(target_seq, model)
 
@@ -1003,7 +1012,6 @@ function toSFFModel(feature_templates::Dict{String,FeatureTemplate},
             @warn("[$(target_id)] $(gene) CDS is $(length(cds)) bp, whereas median expected length is $(gene_median_length)")
             push!(warnings, LESS_THAN_EXPECTED_MEDIAN_LENGTH)
         end
-
 
         if gene ≠ "rps12B" && !isstartcodon(getcodon(cds, Int32(1)), true, true)
             push!(warnings, LACKS_START_CODON)
