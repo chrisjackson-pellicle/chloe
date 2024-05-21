@@ -333,7 +333,7 @@ function get_mean_lengths_dict(feature_templates::Dict)
     template_lengths_dict = Dict{String,UInt16}()
 
     for (key, value) in feature_templates
-        # println("Key: $key, Value: $value")
+
         feature_type = split(key, '/')[2]
         if feature_type == "intron"
             continue
@@ -346,7 +346,7 @@ function get_mean_lengths_dict(feature_templates::Dict)
         if !haskey(template_lengths_dict, gene_name)
             template_lengths_dict[gene_name] = median_length
         else
-            template_lengths_dict[gene_name] = template_lengths_dict[gene_name] += median_length
+            template_lengths_dict[gene_name] += median_length
         end
     end
 
