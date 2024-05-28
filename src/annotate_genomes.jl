@@ -128,17 +128,60 @@ function do_annotations(target_id::String, strand::Char, refs::Vector{SingleRefe
     annotations
 end
 
-function score_feature(sff::SFF_Feature, reference_feature_counts::Dict{String,Int}, gmatch::Float32, seq::CircularSequence)
+function score_feature(sff::SFF_Feature, reference_feature_counts::Dict{String,Int}, gmatch::Float32, seq::CircularSequence, gene::String)
+    
+    
     ref_count = reference_feature_counts[annotation_path(sff.feature)]
     slice = sff.feature.stack[range(sff.feature.start, length=sff.feature.length)]
     sff.stackdepth = Float32((length(slice) > 0 ? sum(slice) : 0) / (ref_count * sff.feature.length))
     sff.relative_length = sff.feature.length / sff.feature.median_length
     sff.gmatch = gmatch
+
+    if gene == "ccsA"
+        println("[score_feature] $(gene)")
+
+        println("[score_feature] slice: $(slice)")
+        slice = sff.feature.stack[range(sff.feature.start, length=528)]
+        println("[score_feature] slice: $(slice)")
+
+        println("[score_feature] sff.stackdepth: $(sff.stackdepth)")
+        sff.stackdepth = Float32((length(slice) > 0 ? sum(slice) : 0) / (ref_count * 528))
+        println("[score_feature] sff.stackdepth: $(sff.stackdepth)")
+
+        println("[score_feature] sff.relative_length: $(sff.relative_length)")
+        sff.relative_length = 528 / sff.feature.median_length
+        println("[score_feature] sff.relative_length: $(sff.relative_length)")
+
+        println("[score_feature] ref_count: $(ref_count)")
+        println("[score_feature] slice: $(slice)")
+        println("[score_feature] sff.stackdepth: $(sff.stackdepth)")
+        println("[score_feature] sff.relative_length: $(sff.relative_length)")
+        println("[score_feature] sff.gmatch: $(sff.gmatch)")
+        println("[score_feature] fieldnames(typeof(sff.feature)): $(fieldnames(typeof(sff.feature)))")
+
+        println("sff.feature.start: $(sff.feature.start)")
+
+        println("sff.feature.length: $(sff.feature.length)")
+        sff.feature.length = Int32(480)
+        println("sff.feature.length: $(sff.feature.length)")
+    end
+
+
     if sff.feature.type == "CDS"
         codonfrequencies = countcodons(sff.feature, seq)
+        # println("codonfrequencies: $(codonfrequencies)")
         sff.coding_prob = xgb_coding_classifier(codonfrequencies)
+        # println("$(gene) sff.coding_prob: $(sff.coding_prob)")
+        if gene == "ccsA"
+            println("sff.coding_prob: $(sff.coding_prob)")
+        end
     end
-    sff.feature_prob = feature_xgb(sff.feature.type, sff.feature.median_length, sff.feature.length, sff.stackdepth, sff.coding_prob)
+    if gene == "ccsA"
+        sff.feature_prob = feature_xgb(sff.feature.type, sff.feature.median_length, sff.feature.length, sff.stackdepth, sff.coding_prob, gene)
+        println("ccsA sff.feature_prob: $(sff.feature_prob)")
+    else
+        sff.feature_prob = feature_xgb(sff.feature.type, sff.feature.median_length, sff.feature.length, sff.stackdepth, sff.coding_prob, gene)
+    end
 end
 
 function fill_feature_stack(target_length::Int32, annotations::Vector{Annotation},
@@ -216,6 +259,8 @@ end
 function do_strand(target_id::String, target_seq::CircularSequence, refs::Vector{SingleReference}, coverages::Dict{String,Float32}, reference_feature_counts::Dict{String,Int},
     strand::Char, blocks_aligned_to_target::Vector{FwdRev{BlockTree}}, feature_templates::Dict{String,FeatureTemplate})::Vector{Vector{SFF_Feature}}
 
+    println("[do_strand]")
+
     t4 = time_ns()
     target_length = Int32(length(target_seq))
     annotations = do_annotations(target_id, strand, refs, blocks_aligned_to_target, target_length)
@@ -240,49 +285,50 @@ function do_strand(target_id::String, target_seq::CircularSequence, refs::Vector
     gmatch = mean(values(coverages))
     sff_features = Vector{SFF_Feature}(undef, length(features))
     for (i, feature) in enumerate(features)
+        # println(feature.gene)
         refine_boundaries_by_offsets!(feature, annotations, target_length, coverages)
         sff_features[i] = SFF_Feature(feature, 0.0, 0.0, 0.0, 0.0, 0.0)
-        score_feature(sff_features[i], reference_feature_counts, gmatch, target_seq)
+        score_feature(sff_features[i], reference_feature_counts, gmatch, target_seq, feature.gene)
     end
 
     # group by feature name on features ordered by mid-point
     target_strand_models::Vector{Vector{SFF_Feature}} = features2models(sort(sff_features, by=x -> x.feature))
 
-    orfs = getallorfs(target_seq, strand, Int32(0))
-    # this toys with the feature start, phase etc....
-    # refine_gene_models! does not (yet) use the relative_length, stackdepth, feature_prob, coding_prob values but could...
-    refine_gene_models!(target_strand_models, target_seq, orfs)
+    # orfs = getallorfs(target_seq, strand, Int32(0))
+    # # this toys with the feature start, phase etc....
+    # # refine_gene_models! does not (yet) use the relative_length, stackdepth, feature_prob, coding_prob values but could...
+    # refine_gene_models!(target_strand_models, target_seq, orfs)
 
-    # this inefficiently updates all features, even those unchanged by refine_gene_models!
-    for m in target_strand_models, sf in m
-        # update feature data
-        score_feature(sf, reference_feature_counts, gmatch, target_seq)
-    end
+    # # this inefficiently updates all features, even those unchanged by refine_gene_models!
+    # for m in target_strand_models, sf in m
+    #     # update feature data
+    #     score_feature(sf, reference_feature_counts, gmatch, target_seq)
+    # end
 
-    #=
-    # add any unassigned orfs
-    for uorf in orfs
-        uorf.length < MINIMUM_UNASSIGNED_ORF_LENGTH && continue
-        # println(uorf)
-        unassigned = true
-        orf_frame = mod1(uorf.start, 3)
-        for m in target_strand_models, sf in m
-            f = sf.feature
-            # println(f)
-            f_frame = mod1(f.start + f.phase, 3)
-            if orf_frame == f_frame && length(overlaps(range(uorf.start, length = uorf.length), range(f.start, length = f.length), target_length)) > 0
-                unassigned = false
-            end
-        end
-        if unassigned
-            # count codons
-            codonfrequencies = countcodons(uorf, target_seq)
-            # predict with XGBCodingClassifier
-            coding_prob = xgb_coding_classifier(codonfrequencies)
-            push!(target_strand_models, [SFF_Feature(uorf, 0.0, 0.0, gmatch, coding_prob / 2, coding_prob)])
-        end
-    end
-    =#
+    # #=
+    # # add any unassigned orfs
+    # for uorf in orfs
+    #     uorf.length < MINIMUM_UNASSIGNED_ORF_LENGTH && continue
+    #     # println(uorf)
+    #     unassigned = true
+    #     orf_frame = mod1(uorf.start, 3)
+    #     for m in target_strand_models, sf in m
+    #         f = sf.feature
+    #         # println(f)
+    #         f_frame = mod1(f.start + f.phase, 3)
+    #         if orf_frame == f_frame && length(overlaps(range(uorf.start, length = uorf.length), range(f.start, length = f.length), target_length)) > 0
+    #             unassigned = false
+    #         end
+    #     end
+    #     if unassigned
+    #         # count codons
+    #         codonfrequencies = countcodons(uorf, target_seq)
+    #         # predict with XGBCodingClassifier
+    #         coding_prob = xgb_coding_classifier(codonfrequencies)
+    #         push!(target_strand_models, [SFF_Feature(uorf, 0.0, 0.0, gmatch, coding_prob / 2, coding_prob)])
+    #     end
+    # end
+    # =#
 
     @info "[$target_id]$strand built gene models: $(elapsed(t5))"
     return target_strand_models
@@ -409,6 +455,7 @@ function annotate_one_worker(db::AbstractReferenceDb,
     @info "[$target_id] aligned: ($(numrefs)) $(human(datasize(blocks_aligned_to_targetf) + datasize(blocks_aligned_to_targetr))) mean coverage: $(geomean(values(coverages))) $(ns(t3 - t2))"
 
     function watson()
+        println("[watson]")
         models = do_strand(target_id, target.forward, refs, coverages, reference_feature_counts,
             '+', blocks_aligned_to_targetf, feature_templates)
         final_models = SFF_Model[]
@@ -418,8 +465,9 @@ function annotate_one_worker(db::AbstractReferenceDb,
         end
         final_models
     end
-
+    
     function crick()
+        println("[crick]")
         models = do_strand(target_id, target.reverse, refs, coverages, reference_feature_counts,
             '-', blocks_aligned_to_targetr, feature_templates)
         final_models = SFF_Model[]
@@ -433,6 +481,7 @@ function annotate_one_worker(db::AbstractReferenceDb,
     # from https://discourse.julialang.org/t/threads-threads-to-return-results/47382
 
     sffs_fwd, sffs_rev, ir = fetch.((Threads.@spawn w()) for w in [watson, crick, () -> inverted_repeat(target.forward, target.reverse)])
+    # exit()
 
     ir1 = ir2 = nothing
     if ir.blocklength >= 1000
@@ -1067,12 +1116,27 @@ end
 
 const MAXFEATURELENGTH = 7000
 
-function feature_xgb(ftype::String, median_length::Float32, featurelength::Int32, fdepth::Float32, codingprob::Float32)::Float32
+function feature_xgb(ftype::String, median_length::Float32, featurelength::Int32, fdepth::Float32, codingprob::Float32, gene::String)::Float32
     featurelength ≤ 0 && return Float32(0.0)
     fdepth ≤ 0 && return Float32(0.0)
+
+    if gene == "ccsA"
+        println("[feature_xgb] gene $(gene)")
+        println("[feature_xgb] featurelength $(featurelength)")
+        println("[feature_xgb] median_length $(median_length)")
+    end
+
+
     rtlength = median_length / MAXFEATURELENGTH
     rflength = featurelength / MAXFEATURELENGTH
     frtlength = featurelength / median_length
+
+    if gene == "ccsA"
+        println("[feature_xgb] rtlength $(rtlength)")
+        println("[feature_xgb] rflength $(rflength)")
+        println("[feature_xgb] frtlength $(frtlength)")
+    end
+
     boost = get_boost()
     pred = if ftype == "CDS"
         XGBoost.predict(boost.coding_xgb_model, [rtlength rflength frtlength fdepth codingprob])

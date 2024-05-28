@@ -180,5 +180,6 @@ function xgb_coding_classifier(codonfrequencies::Vector{Float64})::Float32
     #test with XGB (is there a better way to construct the input matrix?)
     boost = get_boost()
     pred = XGBoost.predict(boost.xgb_coding_model, reshape(codonfrequencies[vcat(collect(1:48), [50], collect(52:56), collect(58:end))], 1, :))
+    # println("pred: $(pred)")
     return pred[1]
 end
