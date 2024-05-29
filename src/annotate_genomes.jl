@@ -1374,10 +1374,16 @@ end
 
 function write_model2GFF3(outfile, model::SFF_Model, genome_id::String, genome_length::Int32)
 
-    function write_line(type, start, finish, pvalue, id, parent, phase="."; key="Parent")
+    function write_line(type, start, finish, pvalue, id, parent, phase="."; key="Parent", name=false)
         l = [genome_id, "Chloe", type, start, finish, @sprintf("%.3e", pvalue), model.strand, phase]
         write(outfile, join(l, "\t"))
-        write(outfile, "\t", "ID=", id, ";", key, "=", parent, "\n")
+
+        if name
+            write(outfile, "\t", "ID=", id, ";", key, "=", parent, ";", "Name", "=", parent, "\n")
+        else
+            write(outfile, "\t", "ID=", id, ";", key, "=", parent, "\n")
+        end
+
     end
 
     merge_adjacent_features!(model)
@@ -1433,7 +1439,8 @@ function write_model2GFF3(outfile, model::SFF_Model, genome_id::String, genome_l
         start, finish, length = sff2gffcoords(f, model.strand, genome_length)
 
         phase = type == "CDS" ? string(f.phase) : "."
-        write_line(type, start, finish, 1.0 - sff.feature_prob, id * "." * type * "." * string(f.order), parent, phase)
+        # write_line(type, start, finish, 1.0 - sff.feature_prob, id * "." * type * "." * string(f.order), parent, phase; name=true)
+        write_line(type, start, finish, 1.0 - sff.feature_prob, id, parent, phase; name=true)
     end
     write(outfile, "###\n")
 end
