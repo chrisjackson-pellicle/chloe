@@ -1088,9 +1088,9 @@ function toSFFModel(
 
     if exceeds_sensitivity && (type == "CDS")
         cds = splice_model(target_seq, model)
-        
+
         if (length(cds) / gene_median_length) < short_gene_warning_threshold
-            println("WARNING: $(gene) CDS is $(length(cds)) bp, whereas median expected length is $(gene_median_length)")
+            @warn "$(gene) CDS is $(length(cds)) bp, whereas median expected length is $(gene_median_length)"
             push!(warnings, LESS_THAN_EXPECTED_MEDIAN_LENGTH)
         end
 
