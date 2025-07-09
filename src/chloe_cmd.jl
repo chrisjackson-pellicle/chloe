@@ -22,6 +22,7 @@ function chloe(;
     reference_dir="cp",
     fasta_files=String[],
     sensitivity=DEFAULT_SENSITIVITY,
+    short_gene_warning_threshold=DEFAULT_SHORT_THRESHOLD,
     output::Union{String,Nothing}=nothing,
     no_transform::Bool=false,
     sff::Bool=false,
@@ -46,6 +47,7 @@ function chloe(;
         gbk=gbk,
         embl=embl,
         no_filter=no_filter,
+        short_gene_warning_threshold=short_gene_warning_threshold,
         reference=reference_dir
     )
     Annotator.annotate_batch(db, fasta_files, config, output, use_id)
@@ -122,6 +124,10 @@ function getargs(args::Vector{String}=ARGS)
         "--no-filter"
         action = :store_true
         help = "don't filter output"
+        "--short_gene_warning_threshold"
+        arg_type = Float64
+        default = DEFAULT_SHORT_THRESHOLD
+        help = "Percentage of median expected gene length; genes beneath this threshold will trigger a warning [default: $(DEFAULT_SHORT_THRESHOLD)]"
         "--no-transform"
         action = :store_true
         help = "do not flip and orient sequence to standard configuration"

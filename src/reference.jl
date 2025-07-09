@@ -3,6 +3,7 @@ include("globals.jl")
 struct ChloeConfig
     no_transform::Bool
     sensitivity::Float64
+    short_gene_warning_threshold::Real
     sff::Bool
     no_gff::Bool
     gbk::Bool
@@ -12,6 +13,7 @@ struct ChloeConfig
     function ChloeConfig(;
         no_transform=false,
         sensitivity=DEFAULT_SENSITIVITY,
+        short_gene_warning_threshold=DEFAULT_SHORT_THRESHOLD,
         sff::Bool=false,
         no_gff::Bool=false,
         gbk::Bool=false,
@@ -19,7 +21,7 @@ struct ChloeConfig
         no_filter::Bool=false,
         reference::String="cp"
     )
-        return new(no_transform, sensitivity, sff, no_gff, gbk, embl, no_filter, reference)
+        return new(no_transform, sensitivity, short_gene_warning_threshold, sff, no_gff, gbk, embl, no_filter, reference)
     end
     # needs to be V <: Any since this is coming from a JSON blob
     function ChloeConfig(dict::Dict{String,V} where {V<:Any})
